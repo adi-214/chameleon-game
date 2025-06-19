@@ -248,13 +248,6 @@
             border-left: 4px solid #007bff;
         }
 
-        .timer {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #ff6b6b;
-            margin-top: 10px;
-        }
-
         .clues-section {
             margin: 20px 0;
         }
@@ -351,6 +344,12 @@
             line-height: 1.4;
         }
 
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+
         @media (max-width: 480px) {
             .container {
                 padding: 10px;
@@ -413,9 +412,9 @@
             
             <div class="rules-section">
                 <h4>🎮 GAMEPLAY</h4>
-                <p>• Each player gives ONE word clue (1 minute each)</p>
+                <p>• Each player gives ONE word clue</p>
                 <p>• Chameleon must bluff without knowing the word</p>
-                <p>• 5 minutes discussion to identify the Chameleon</p>
+                <p>• Discussion to identify the Chameleon</p>
                 <p>• Vote for who you think is the Chameleon</p>
             </div>
             
@@ -470,7 +469,6 @@
             <!-- Game Status -->
             <div class="game-status">
                 <div id="statusMessage">Game starting...</div>
-                <div id="timer" class="timer"></div>
             </div>
 
             <!-- Clue Input -->
@@ -523,20 +521,17 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Socket connection
-        const socket = io();
-
         // Game state
         let gameState = {
             roomCode: null,
+            playerId: null,
             playerName: null,
             isHost: false,
             players: [],
             currentRole: null,
             secretWord: null,
-            timerInterval: null
+            pollInterval: null
         };
 
         // DOM elements
@@ -562,7 +557,6 @@
             playerRole: document.getElementById('playerRole'),
             secretWordDisplay: document.getElementById('secretWordDisplay'),
             statusMessage: document.getElementById('statusMessage'),
-            timer: document.getElementById('timer'),
             clueInput: document.getElementById('clueInput'),
             clueText: document.getElementById('clueText'),
             cluesList: document.getElementById('cluesList'),
@@ -592,29 +586,31 @@
             }, 5000);
         }
 
-        function updateTimer(seconds) {
-            if (gameState.timerInterval) {
-                clearInterval(gameState.timerInterval);
-            }
-            
-            let remaining = seconds;
-            elements.timer.textContent = formatTime(remaining);
-            
-            gameState.timerInterval = setInterval(() => {
-                remaining--;
-                elements.timer.textContent = formatTime(remaining);
+        async function apiCall(endpoint, data = null) {
+            try {
+                const options = {
+                    method: data ? 'POST' : 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
                 
-                if (remaining <= 0) {
-                    clearInterval(gameState.timerInterval);
-                    elements.timer.textContent = "Time's up!";
+                if (data) {
+                    options.body = JSON.stringify(data);
                 }
-            }, 1000);
-        }
-
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
+                
+                const response = await fetch(`/api/${endpoint}`, options);
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'Something went wrong');
+                }
+                
+                return result;
+            } catch (error) {
+                showError(error.message);
+                throw error;
+            }
         }
 
         function updatePlayersDisplay() {
@@ -623,10 +619,10 @@
             
             gameState.players.forEach(player => {
                 const div = document.createElement('div');
-                div.className = `player-item ${player.id === gameState.players.find(p => gameState.isHost && p.id === socket.id) ? 'host' : ''}`;
+                div.className = `player-item ${player.id === gameState.playerId && gameState.isHost ? 'host' : ''}`;
                 div.innerHTML = `
                     <span>${player.name}</span>
-                    ${gameState.isHost && player.id === socket.id ? '<span>👑 Host</span>' : ''}
+                    ${player.id === gameState.playerId && gameState.isHost ? '<span>👑 Host</span>' : ''}
                 `;
                 elements.playersList.appendChild(div);
             });
@@ -641,15 +637,240 @@
             }
         }
 
+        async function pollRoomState() {
+            if (!gameState.roomCode || !gameState.playerId) return;
+            
+            try {
+                const roomData = await fetch(`/api/room/${gameState.roomCode}?playerId=${gameState.playerId}`);
+                const room = await roomData.json();
+                
+                if (!roomData.ok) {
+                    if (room.error === 'Room not found') {
+                        showError('Room no longer exists');
+                        showScreen('welcome');
+                        return;
+                    }
+                }
+                
+                // Update game state
+                gameState.players = room.players;
+                gameState.isHost = room.isHost;
+                gameState.currentRole = room.role;
+                gameState.secretWord = room.secretWord;
+                
+                // Update UI based on game state
+                if (room.gameState === 'waiting') {
+                    updatePlayersDisplay();
+                    if (screens.lobby.classList.contains('active')) {
+                        // Stay on lobby screen
+                    }
+                } else if (room.gameState === 'clueGiving') {
+                    if (!screens.game.classList.contains('active')) {
+                        showGameScreen(room);
+                    }
+                    updateClueGivingState(room);
+                } else if (room.gameState === 'discussion') {
+                    updateDiscussionState(room);
+                } else if (room.gameState === 'voting') {
+                    updateVotingState(room);
+                } else if (room.gameState === 'chameleonGuess') {
+                    updateChameleonGuessState(room);
+                } else {
+                    updateGameEndState(room);
+                }
+                
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+
+        function showGameScreen(room) {
+            if (room.currentTopic) {
+                elements.topicTitle.textContent = room.currentTopic.title;
+                elements.yellowDie.textContent = room.diceRoll.yellow;
+                elements.blueDie.textContent = room.diceRoll.blue;
+                
+                // Create topic grid
+                elements.topicGrid.innerHTML = '';
+                room.currentTopic.words.forEach(row => {
+                    row.forEach(word => {
+                        const div = document.createElement('div');
+                        div.className = 'topic-word';
+                        div.textContent = word;
+                        elements.topicGrid.appendChild(div);
+                    });
+                });
+                
+                // Show role
+                if (room.role === 'chameleon') {
+                    elements.playerRole.innerHTML = '<div class="role-chameleon">🦎 You are the CHAMELEON</div>';
+                    elements.secretWordDisplay.textContent = 'You must figure out the secret word!';
+                } else {
+                    elements.playerRole.innerHTML = '<div class="role-player">🔍 You are a PLAYER</div>';
+                    elements.secretWordDisplay.innerHTML = `<div class="secret-word">Secret word: ${room.secretWord}</div>`;
+                    
+                    // Highlight the secret word
+                    const words = document.querySelectorAll('.topic-word');
+                    words.forEach(word => {
+                        if (word.textContent === room.secretWord) {
+                            word.classList.add('highlight');
+                        }
+                    });
+                }
+                
+                showScreen('game');
+            }
+        }
+
+        function updateClueGivingState(room) {
+            const playerIds = room.players.map(p => p.id);
+            const currentPlayerIndex = room.currentClueIndex;
+            
+            if (currentPlayerIndex < playerIds.length) {
+                const currentPlayerId = playerIds[currentPlayerIndex];
+                const isMyTurn = currentPlayerId === gameState.playerId;
+                
+                elements.statusMessage.textContent = isMyTurn ? 'Your turn to give a clue!' : 'Waiting for clue...';
+                
+                if (isMyTurn) {
+                    elements.clueInput.classList.remove('hidden');
+                    elements.clueText.focus();
+                } else {
+                    elements.clueInput.classList.add('hidden');
+                }
+            }
+            
+            // Update clues list
+            elements.cluesList.innerHTML = '';
+            room.clues.forEach(clueData => {
+                const clueDiv = document.createElement('div');
+                clueDiv.className = 'clue-item';
+                clueDiv.innerHTML = `
+                    <span class="clue-player">${clueData.playerName}:</span>
+                    <span class="clue-text">${clueData.clue}</span>
+                `;
+                elements.cluesList.appendChild(clueDiv);
+            });
+            
+            elements.discussionControls.classList.add('hidden');
+            elements.votingArea.classList.add('hidden');
+        }
+
+        function updateDiscussionState(room) {
+            elements.statusMessage.textContent = 'Discussion time! Who is the Chameleon?';
+            elements.clueInput.classList.add('hidden');
+            elements.discussionControls.classList.remove('hidden');
+            elements.votingArea.classList.add('hidden');
+        }
+
+        function updateVotingState(room) {
+            elements.statusMessage.textContent = 'Time to vote! Who is the Chameleon?';
+            elements.discussionControls.classList.add('hidden');
+            elements.votingArea.classList.remove('hidden');
+            
+            // Create voting options if not already created
+            if (elements.votingOptions.children.length === 0) {
+                room.players.forEach(player => {
+                    const div = document.createElement('div');
+                    div.className = 'vote-option';
+                    div.textContent = player.name;
+                    div.addEventListener('click', () => {
+                        document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
+                        div.classList.add('selected');
+                        submitVote(player.id);
+                    });
+                    elements.votingOptions.appendChild(div);
+                });
+                
+                // Add "Nobody" option
+                const nobodyDiv = document.createElement('div');
+                nobodyDiv.className = 'vote-option';
+                nobodyDiv.textContent = 'Nobody (Additional clues needed)';
+                nobodyDiv.addEventListener('click', () => {
+                    document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
+                    nobodyDiv.classList.add('selected');
+                    submitVote('nobody');
+                });
+                elements.votingOptions.appendChild(nobodyDiv);
+            }
+            
+            // Update votes list
+            elements.votesList.innerHTML = '';
+            room.votes.forEach(voteData => {
+                const voteDiv = document.createElement('div');
+                voteDiv.className = 'clue-item';
+                voteDiv.innerHTML = `
+                    <span class="clue-player">${voteData.playerName}</span>
+                    <span class="clue-text">voted for: ${voteData.vote}</span>
+                `;
+                elements.votesList.appendChild(voteDiv);
+            });
+        }
+
+        function updateChameleonGuessState(room) {
+            elements.statusMessage.textContent = 'Chameleon caught! Waiting for their guess...';
+            elements.votingArea.classList.add('hidden');
+            
+            if (room.role === 'chameleon') {
+                elements.chameleonGuess.classList.remove('hidden');
+                elements.guessText.focus();
+            }
+        }
+
+        function updateGameEndState(room) {
+            let message = '';
+            let playerWon = false;
+            
+            if (room.gameState === 'chameleonEscaped') {
+                message = 'The Chameleon escaped! No one was caught.';
+                playerWon = room.role === 'chameleon';
+            } else if (room.gameState === 'wrongAccusation') {
+                message = 'Wrong accusation! The Chameleon escaped.';
+                playerWon = room.role === 'chameleon';
+            } else if (room.gameState === 'chameleonWins') {
+                message = 'Chameleon guessed correctly and won!';
+                playerWon = room.role === 'chameleon';
+            } else if (room.gameState === 'playersWin') {
+                message = 'Chameleon guessed wrong! Players win!';
+                playerWon = room.role !== 'chameleon';
+            }
+            
+            elements.resultMessage.innerHTML = `
+                <div class="${playerWon ? 'result-win' : 'result-lose'}">
+                    ${playerWon ? '🎉 You Won!' : '😔 You Lost!'}
+                </div>
+                <p style="margin-top: 15px;">${message}</p>
+            `;
+            elements.gameResult.classList.remove('hidden');
+            elements.chameleonGuess.classList.add('hidden');
+        }
+
         // Event listeners
-        document.getElementById('createRoomBtn').addEventListener('click', () => {
+        document.getElementById('createRoomBtn').addEventListener('click', async () => {
             const name = elements.playerName.value.trim();
             if (!name) {
                 showError('Please enter your name');
                 return;
             }
-            gameState.playerName = name;
-            socket.emit('createRoom', { playerName: name });
+            
+            try {
+                const result = await apiCall('create-room', { playerName: name });
+                gameState.roomCode = result.roomCode;
+                gameState.playerId = result.playerId;
+                gameState.playerName = name;
+                gameState.isHost = true;
+                gameState.players = result.players;
+                
+                elements.roomCodeDisplay.textContent = result.roomCode;
+                updatePlayersDisplay();
+                showScreen('lobby');
+                
+                // Start polling
+                gameState.pollInterval = setInterval(pollRoomState, 2000);
+                
+            } catch (error) {
+                // Error already shown in apiCall
+            }
         });
 
         document.getElementById('joinRoomBtn').addEventListener('click', () => {
@@ -657,7 +878,7 @@
             elements.roomCode.focus();
         });
 
-        document.getElementById('confirmJoinBtn').addEventListener('click', () => {
+        document.getElementById('confirmJoinBtn').addEventListener('click', async () => {
             const name = elements.playerName.value.trim();
             const code = elements.roomCode.value.trim().toUpperCase();
             
@@ -671,8 +892,24 @@
                 return;
             }
             
-            gameState.playerName = name;
-            socket.emit('joinRoom', { roomCode: code, playerName: name });
+            try {
+                const result = await apiCall('join-room', { roomCode: code, playerName: name });
+                gameState.roomCode = result.roomCode;
+                gameState.playerId = result.playerId;
+                gameState.playerName = name;
+                gameState.isHost = result.isHost;
+                gameState.players = result.players;
+                
+                elements.roomCodeDisplay.textContent = result.roomCode;
+                updatePlayersDisplay();
+                showScreen('lobby');
+                
+                // Start polling
+                gameState.pollInterval = setInterval(pollRoomState, 2000);
+                
+            } catch (error) {
+                // Error already shown in apiCall
+            }
         });
 
         document.getElementById('showRules').addEventListener('click', () => {
@@ -683,48 +920,105 @@
             showScreen('lobby');
         });
 
-        document.getElementById('startGameBtn').addEventListener('click', () => {
-            socket.emit('startGame');
+        document.getElementById('startGameBtn').addEventListener('click', async () => {
+            try {
+                await apiCall('start-game', { 
+                    roomCode: gameState.roomCode, 
+                    playerId: gameState.playerId 
+                });
+                // Game state will be updated by polling
+            } catch (error) {
+                // Error already shown
+            }
         });
 
-        document.getElementById('submitClue').addEventListener('click', () => {
+        document.getElementById('submitClue').addEventListener('click', async () => {
             const clue = elements.clueText.value.trim();
             if (!clue) {
                 showError('Please enter a clue');
                 return;
             }
             
-            // Check for single word
             if (clue.includes(' ')) {
                 showError('Only one word allowed for clues!');
                 return;
             }
             
-            socket.emit('submitClue', { clue });
-            elements.clueText.value = '';
-            elements.clueInput.classList.add('hidden');
+            try {
+                await apiCall('submit-clue', {
+                    roomCode: gameState.roomCode,
+                    playerId: gameState.playerId,
+                    clue: clue
+                });
+                
+                elements.clueText.value = '';
+                elements.clueInput.classList.add('hidden');
+                
+            } catch (error) {
+                // Error already shown
+            }
         });
 
-        document.getElementById('endDiscussion').addEventListener('click', () => {
-            socket.emit('endDiscussion');
+        document.getElementById('endDiscussion').addEventListener('click', async () => {
+            try {
+                await apiCall('end-discussion', {
+                    roomCode: gameState.roomCode,
+                    playerId: gameState.playerId
+                });
+            } catch (error) {
+                // Error already shown
+            }
         });
 
-        document.getElementById('submitGuess').addEventListener('click', () => {
+        async function submitVote(vote) {
+            try {
+                await apiCall('submit-vote', {
+                    roomCode: gameState.roomCode,
+                    playerId: gameState.playerId,
+                    vote: vote
+                });
+            } catch (error) {
+                // Error already shown
+            }
+        }
+
+        document.getElementById('submitGuess').addEventListener('click', async () => {
             const guess = elements.guessText.value.trim();
             if (!guess) {
                 showError('Please enter your guess');
                 return;
             }
             
-            socket.emit('chameleonGuess', { guess });
-            elements.chameleonGuess.classList.add('hidden');
+            try {
+                await apiCall('chameleon-guess', {
+                    roomCode: gameState.roomCode,
+                    playerId: gameState.playerId,
+                    guess: guess
+                });
+                
+                elements.chameleonGuess.classList.add('hidden');
+                
+            } catch (error) {
+                // Error already shown
+            }
         });
 
-        document.getElementById('playAgain').addEventListener('click', () => {
-            elements.gameResult.classList.add('hidden');
-            elements.cluesList.innerHTML = '';
-            elements.votesList.innerHTML = '';
-            showScreen('lobby');
+        document.getElementById('playAgain').addEventListener('click', async () => {
+            try {
+                await apiCall('reset-game', {
+                    roomCode: gameState.roomCode,
+                    playerId: gameState.playerId
+                });
+                
+                elements.gameResult.classList.add('hidden');
+                elements.cluesList.innerHTML = '';
+                elements.votesList.innerHTML = '';
+                elements.votingOptions.innerHTML = '';
+                showScreen('lobby');
+                
+            } catch (error) {
+                // Error already shown
+            }
         });
 
         // Enter key handlers
@@ -749,207 +1043,12 @@
             e.target.value = e.target.value.toUpperCase();
         });
 
-        // Socket event handlers
-        socket.on('roomCreated', (data) => {
-            gameState.roomCode = data.roomCode;
-            gameState.isHost = true;
-            gameState.players = data.players;
-            
-            elements.roomCodeDisplay.textContent = data.roomCode;
-            updatePlayersDisplay();
-            showScreen('lobby');
-        });
-
-        socket.on('playerJoined', (data) => {
-            gameState.players = data.players;
-            updatePlayersDisplay();
-            showScreen('lobby');
-        });
-
-        socket.on('playerLeft', (data) => {
-            gameState.players = data.players;
-            if (data.newHost) {
-                gameState.isHost = data.newHost === socket.id;
-            }
-            updatePlayersDisplay();
-        });
-
-        socket.on('gameStarted', (data) => {
-            elements.topicTitle.textContent = data.topic.title;
-            elements.yellowDie.textContent = data.diceRoll.yellow;
-            elements.blueDie.textContent = data.diceRoll.blue;
-            
-            // Create topic grid
-            elements.topicGrid.innerHTML = '';
-            data.topic.words.forEach(row => {
-                row.forEach(word => {
-                    const div = document.createElement('div');
-                    div.className = 'topic-word';
-                    div.textContent = word;
-                    elements.topicGrid.appendChild(div);
-                });
-            });
-            
-            showScreen('game');
-        });
-
-        socket.on('roleAssigned', (data) => {
-            gameState.currentRole = data.role;
-            gameState.secretWord = data.secretWord;
-            
-            if (data.role === 'chameleon') {
-                elements.playerRole.innerHTML = '<div class="role-chameleon">🦎 You are the CHAMELEON</div>';
-                elements.secretWordDisplay.textContent = 'You must figure out the secret word!';
-            } else {
-                elements.playerRole.innerHTML = '<div class="role-player">🔍 You are a PLAYER</div>';
-                elements.secretWordDisplay.innerHTML = `<div class="secret-word">Secret word: ${data.secretWord}</div>`;
-                
-                // Highlight the secret word in the grid
-                const words = document.querySelectorAll('.topic-word');
-                words.forEach(word => {
-                    if (word.textContent === data.secretWord) {
-                        word.classList.add('highlight');
-                    }
-                });
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (gameState.pollInterval) {
+                clearInterval(gameState.pollInterval);
             }
         });
-
-        socket.on('cluePhaseStarted', (data) => {
-            elements.statusMessage.textContent = data.currentPlayer === socket.id ? 'Your turn to give a clue!' : 'Waiting for clue...';
-            updateTimer(data.timeLimit);
-            
-            if (data.currentPlayer === socket.id) {
-                elements.clueInput.classList.remove('hidden');
-                elements.clueText.focus();
-            }
-            
-            elements.discussionControls.classList.add('hidden');
-            elements.votingArea.classList.add('hidden');
-        });
-
-        socket.on('nextPlayerTurn', (data) => {
-            elements.statusMessage.textContent = data.currentPlayer === socket.id ? 'Your turn to give a clue!' : 'Waiting for clue...';
-            updateTimer(data.timeLimit);
-            
-            if (data.currentPlayer === socket.id) {
-                elements.clueInput.classList.remove('hidden');
-                elements.clueText.focus();
-            }
-        });
-
-        socket.on('clueSubmitted', (data) => {
-            const clueDiv = document.createElement('div');
-            clueDiv.className = 'clue-item';
-            clueDiv.innerHTML = `
-                <span class="clue-player">${data.playerName}:</span>
-                <span class="clue-text">${data.clue}</span>
-            `;
-            elements.cluesList.appendChild(clueDiv);
-        });
-
-        socket.on('discussionStarted', (data) => {
-            elements.statusMessage.textContent = 'Discussion time! Who is the Chameleon?';
-            elements.discussionControls.classList.remove('hidden');
-            updateTimer(data.timeLimit);
-        });
-
-        socket.on('votingStarted', () => {
-            elements.statusMessage.textContent = 'Time to vote! Who is the Chameleon?';
-            elements.discussionControls.classList.add('hidden');
-            elements.votingArea.classList.remove('hidden');
-            
-            if (gameState.timerInterval) {
-                clearInterval(gameState.timerInterval);
-            }
-            elements.timer.textContent = '';
-            
-            // Create voting options
-            elements.votingOptions.innerHTML = '';
-            
-            gameState.players.forEach(player => {
-                const div = document.createElement('div');
-                div.className = 'vote-option';
-                div.textContent = player.name;
-                div.addEventListener('click', () => {
-                    document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
-                    div.classList.add('selected');
-                    socket.emit('submitVote', { vote: player.id });
-                });
-                elements.votingOptions.appendChild(div);
-            });
-            
-            // Add "Nobody" option
-            const nobodyDiv = document.createElement('div');
-            nobodyDiv.className = 'vote-option';
-            nobodyDiv.textContent = 'Nobody (Additional clues needed)';
-            nobodyDiv.addEventListener('click', () => {
-                document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
-                nobodyDiv.classList.add('selected');
-                socket.emit('submitVote', { vote: 'nobody' });
-            });
-            elements.votingOptions.appendChild(nobodyDiv);
-        });
-
-        socket.on('voteSubmitted', (data) => {
-            const voteDiv = document.createElement('div');
-            voteDiv.className = 'clue-item';
-            voteDiv.innerHTML = `
-                <span class="clue-player">${data.playerName}</span>
-                <span class="clue-text">voted for: ${data.vote}</span>
-            `;
-            elements.votesList.appendChild(voteDiv);
-        });
-
-        socket.on('votingResult', (data) => {
-            elements.votingArea.classList.add('hidden');
-            
-            if (data.type === 'chameleonCaught') {
-                elements.statusMessage.textContent = 'Chameleon caught! Waiting for their guess...';
-                
-                if (gameState.currentRole === 'chameleon') {
-                    elements.chameleonGuess.classList.remove('hidden');
-                    elements.guessText.focus();
-                }
-            } else if (data.type === 'wrongAccusation') {
-                showGameResult(false, `Wrong! The accused was not the Chameleon. The Chameleon escaped!`);
-            } else if (data.type === 'chameleonEscaped') {
-                showGameResult(false, 'The Chameleon escaped! No one was caught.');
-            }
-        });
-
-        socket.on('chameleonGuessResult', (data) => {
-            const message = data.correct ? 
-                `${data.chameleonName} guessed "${data.guess}" correctly and won!` :
-                `${data.chameleonName} guessed "${data.guess}" but the word was "${data.secretWord}". Players win!`;
-            
-            const playerWon = gameState.currentRole === 'chameleon' ? data.correct : !data.correct;
-            showGameResult(playerWon, message);
-        });
-
-        socket.on('chameleonLeft', () => {
-            showError('The Chameleon has left the chat! Game ended.');
-            setTimeout(() => {
-                showScreen('lobby');
-            }, 3000);
-        });
-
-        socket.on('error', (data) => {
-            showError(data.message);
-        });
-
-        function showGameResult(won, message) {
-            elements.resultMessage.innerHTML = `
-                <div class="${won ? 'result-win' : 'result-lose'}">
-                    ${won ? '🎉 You Won!' : '😔 You Lost!'}
-                </div>
-                <p style="margin-top: 15px;">${message}</p>
-            `;
-            elements.gameResult.classList.remove('hidden');
-            
-            if (gameState.timerInterval) {
-                clearInterval(gameState.timerInterval);
-            }
-        }
 
         // Initialize
         showScreen('welcome');
