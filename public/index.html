@@ -3,169 +3,956 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chameleon Game</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="/socket.io/socket.io.js"></script>
+    <title>🦎 The Chameleon Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: calc(100vh - 40px);
+        }
+
+        .screen {
+            display: none;
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2.2rem;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #ff5252;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .room-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .room-code {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+            letter-spacing: 3px;
+        }
+
+        .players-list {
+            margin: 20px 0;
+        }
+
+        .player-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .player-item.host {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .topic-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .topic-title {
+            text-align: center;
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .topic-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .topic-word {
+            background: white;
+            padding: 10px 5px;
+            text-align: center;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border: 2px solid transparent;
+        }
+
+        .topic-word.highlight {
+            background: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+
+        .dice-display {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .dice.yellow { color: #ffc107; }
+        .dice.blue { color: #007bff; }
+
+        .role-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .role-chameleon {
+            color: #28a745;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .role-player {
+            color: #007bff;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .secret-word {
+            color: #ff6b6b;
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .game-status {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+
+        .timer {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin-top: 10px;
+        }
+
+        .clues-section {
+            margin: 20px 0;
+        }
+
+        .clue-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .clue-player {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .clue-text {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .voting-section {
+            margin: 20px 0;
+        }
+
+        .vote-option {
+            background: #f8f9fa;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .vote-option:hover {
+            background: #e9ecef;
+            border-color: #667eea;
+        }
+
+        .vote-option.selected {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .result-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .result-win {
+            color: #28a745;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .result-lose {
+            color: #dc3545;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .error-message {
+            background: #dc3545;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .rules-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .rules-section h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .rules-section p {
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 1.8rem;
+            }
+            
+            .topic-grid {
+                gap: 8px;
+            }
+            
+            .topic-word {
+                padding: 8px 3px;
+                font-size: 0.75rem;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <!-- Welcome Screen -->
         <div id="welcomeScreen" class="screen active">
-            <div class="welcome-content">
-                <h1>🦎 THE CHAMELEON</h1>
-                <p class="subtitle">Blend in. Don't get caught.</p>
-                
-                <div class="name-input">
-                    <input type="text" id="playerName" placeholder="Enter your name" maxlength="15">
+            <h1>🦎 THE CHAMELEON</h1>
+            <p class="text-center" style="margin-bottom: 30px; color: #666;">Blend in. Don't get caught.</p>
+            
+            <div class="input-group">
+                <input type="text" id="playerName" placeholder="Enter your name" maxlength="15">
+            </div>
+            
+            <button id="createRoomBtn" class="btn btn-primary">Create Room</button>
+            <button id="joinRoomBtn" class="btn btn-secondary">Join Room</button>
+            
+            <div id="joinRoomInput" class="hidden">
+                <div class="input-group">
+                    <input type="text" id="roomCode" placeholder="Enter 4-letter room code" maxlength="4">
                 </div>
-                
-                <div class="button-group">
-                    <button id="createRoomBtn" class="btn primary">Create Room</button>
-                    <button id="joinRoomBtn" class="btn secondary">Join Room</button>
-                </div>
-                
-                <div id="joinRoomInput" class="join-input hidden">
-                    <input type="text" id="roomCode" placeholder="Enter room code" maxlength="4">
-                    <button id="confirmJoinBtn" class="btn primary">Join</button>
-                </div>
+                <button id="confirmJoinBtn" class="btn btn-primary">Join Game</button>
             </div>
         </div>
 
         <!-- Rules Screen -->
         <div id="rulesScreen" class="screen">
-            <div class="rules-content">
-                <h2>🎯 HOW TO PLAY</h2>
-                
-                <div class="rules-section">
-                    <h3>OBJECTIVE</h3>
-                    <p><strong>Players:</strong> Find the Chameleon without revealing the secret word</p>
-                    <p><strong>Chameleon:</strong> Blend in and guess the secret word</p>
-                </div>
-                
-                <div class="rules-section">
-                    <h3>SETUP</h3>
-                    <p>• 3-8 players can join</p>
-                    <p>• One player is secretly the Chameleon</p>
-                    <p>• Everyone sees a topic card with 16 words</p>
-                    <p>• Dice determine the secret word (except Chameleon doesn't know)</p>
-                </div>
-                
-                <div class="rules-section">
-                    <h3>GAMEPLAY</h3>
-                    <p>• Each player gives ONE word clue related to the secret word</p>
-                    <p>• 1 minute per player to think of a clue</p>
-                    <p>• Chameleon must bluff without knowing the word</p>
-                    <p>• 5 minutes discussion to identify the Chameleon</p>
-                    <p>• Vote for who you think is the Chameleon</p>
-                </div>
-                
-                <div class="rules-section">
-                    <h3>WINNING</h3>
-                    <p>• If Chameleon isn't caught: Chameleon wins</p>
-                    <p>• If caught but guesses secret word: Chameleon wins</p>
-                    <p>• If caught and wrong guess: Everyone else wins</p>
-                </div>
-                
-                <button id="backToLobby" class="btn secondary">Back to Lobby</button>
+            <h2>🎯 How to Play</h2>
+            
+            <div class="rules-section">
+                <h4>🎯 OBJECTIVE</h4>
+                <p><strong>Players:</strong> Find the Chameleon without revealing the secret word</p>
+                <p><strong>Chameleon:</strong> Blend in and guess the secret word</p>
             </div>
+            
+            <div class="rules-section">
+                <h4>⚙️ SETUP</h4>
+                <p>• 3-8 players can join a room</p>
+                <p>• One player is secretly the Chameleon</p>
+                <p>• Everyone sees a topic card with 16 words</p>
+                <p>• Dice determine the secret word (Chameleon doesn't know)</p>
+            </div>
+            
+            <div class="rules-section">
+                <h4>🎮 GAMEPLAY</h4>
+                <p>• Each player gives ONE word clue (1 minute each)</p>
+                <p>• Chameleon must bluff without knowing the word</p>
+                <p>• 5 minutes discussion to identify the Chameleon</p>
+                <p>• Vote for who you think is the Chameleon</p>
+            </div>
+            
+            <div class="rules-section">
+                <h4>🏆 WINNING</h4>
+                <p>• If Chameleon isn't caught: Chameleon wins</p>
+                <p>• If caught but guesses secret word: Chameleon wins</p>
+                <p>• If caught and wrong guess: Everyone else wins</p>
+            </div>
+            
+            <button id="backToLobby" class="btn btn-secondary">Back to Lobby</button>
         </div>
 
         <!-- Lobby Screen -->
         <div id="lobbyScreen" class="screen">
-            <div class="lobby-content">
-                <div class="room-header">
-                    <h2>Room: <span id="roomCodeDisplay"></span></h2>
-                    <button id="showRules" class="btn secondary small">Rules</button>
-                </div>
-                
-                <div class="players-list">
-                    <h3>Players (<span id="playerCount">0</span>/8)</h3>
-                    <div id="playersList"></div>
-                </div>
-                
-                <div class="lobby-actions">
-                    <button id="startGameBtn" class="btn primary hidden">Start Game</button>
-                    <p id="waitingMessage" class="waiting-text">Waiting for host to start the game...</p>
-                    <p class="min-players">Minimum 3 players required</p>
-                </div>
+            <div class="room-info">
+                <h3>Room Code</h3>
+                <div class="room-code" id="roomCodeDisplay">----</div>
+                <button id="showRules" class="btn btn-secondary" style="margin-top: 15px; width: auto; padding: 8px 16px;">View Rules</button>
+            </div>
+            
+            <div class="players-list">
+                <h3>Players (<span id="playerCount">0</span>/8)</h3>
+                <div id="playersList"></div>
+            </div>
+            
+            <div class="text-center">
+                <button id="startGameBtn" class="btn btn-primary hidden">Start Game</button>
+                <p id="waitingMessage" style="color: #666; margin-top: 15px;">Waiting for host to start the game...</p>
+                <p style="color: #888; font-size: 0.9rem; margin-top: 10px;">Minimum 3 players required</p>
             </div>
         </div>
 
         <!-- Game Screen -->
         <div id="gameScreen" class="screen">
             <!-- Topic Card -->
-            <div id="topicCard" class="topic-card">
-                <h3 id="topicTitle"></h3>
-                <div id="topicGrid" class="topic-grid"></div>
-                <div id="diceDisplay" class="dice-display">
-                    <span class="dice yellow">🎲 <span id="yellowDie"></span></span>
-                    <span class="dice blue">🎲 <span id="blueDie"></span></span>
+            <div class="topic-card">
+                <div class="topic-title" id="topicTitle">LOADING...</div>
+                <div class="topic-grid" id="topicGrid"></div>
+                <div class="dice-display">
+                    <span class="dice yellow">🎲 <span id="yellowDie">?</span></span>
+                    <span class="dice blue">🎲 <span id="blueDie">?</span></span>
                 </div>
             </div>
 
             <!-- Role Information -->
-            <div id="roleInfo" class="role-info">
-                <div id="playerRole" class="role-display"></div>
+            <div class="role-info">
+                <div id="playerRole">Waiting for role...</div>
                 <div id="secretWordDisplay" class="secret-word"></div>
             </div>
 
             <!-- Game Status -->
-            <div id="gameStatus" class="game-status">
-                <div id="statusMessage" class="status-message"></div>
+            <div class="game-status">
+                <div id="statusMessage">Game starting...</div>
                 <div id="timer" class="timer"></div>
             </div>
 
             <!-- Clue Input -->
-            <div id="clueInput" class="clue-input hidden">
-                <h4>Your turn! Give a one-word clue:</h4>
+            <div id="clueInput" class="hidden">
+                <h4 style="margin-bottom: 15px;">Your turn! Give a one-word clue:</h4>
                 <input type="text" id="clueText" placeholder="Enter your clue" maxlength="20">
-                <button id="submitClue" class="btn primary">Submit Clue</button>
+                <button id="submitClue" class="btn btn-primary">Submit Clue</button>
             </div>
 
             <!-- Clues Display -->
-            <div id="cluesDisplay" class="clues-display">
+            <div class="clues-section">
                 <h4>Clues Given:</h4>
                 <div id="cluesList"></div>
             </div>
 
             <!-- Discussion Controls -->
-            <div id="discussionControls" class="discussion-controls hidden">
-                <button id="endDiscussion" class="btn primary">End Discussion & Vote</button>
+            <div id="discussionControls" class="hidden text-center">
+                <button id="endDiscussion" class="btn btn-primary">End Discussion & Vote</button>
             </div>
 
             <!-- Voting -->
-            <div id="votingArea" class="voting-area hidden">
+            <div id="votingArea" class="voting-section hidden">
                 <h4>Who is the Chameleon?</h4>
-                <div id="votingOptions" class="voting-options"></div>
+                <div id="votingOptions"></div>
             </div>
 
             <!-- Voting Results -->
-            <div id="votingResults" class="voting-results">
+            <div id="votingResults">
                 <div id="votesList"></div>
             </div>
 
             <!-- Chameleon Guess -->
-            <div id="chameleonGuess" class="chameleon-guess hidden">
-                <h4>Chameleon's Final Guess:</h4>
-                <p>What was the secret word?</p>
+            <div id="chameleonGuess" class="hidden">
+                <h4 style="margin-bottom: 15px;">Chameleon's Final Guess:</h4>
+                <p style="margin-bottom: 15px;">What was the secret word?</p>
                 <input type="text" id="guessText" placeholder="Enter your guess" maxlength="20">
-                <button id="submitGuess" class="btn primary">Submit Guess</button>
+                <button id="submitGuess" class="btn btn-primary">Submit Guess</button>
             </div>
 
             <!-- Game Result -->
-            <div id="gameResult" class="game-result hidden">
+            <div id="gameResult" class="result-section hidden">
                 <div id="resultMessage"></div>
-                <button id="playAgain" class="btn primary">Play Again</button>
+                <button id="playAgain" class="btn btn-primary">Play Again</button>
             </div>
         </div>
 
         <!-- Error Messages -->
         <div id="errorMessage" class="error-message hidden">
             <span id="errorText"></span>
-            <button id="closeError" class="close-btn">&times;</button>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Socket connection
+        const socket = io();
+
+        // Game state
+        let gameState = {
+            roomCode: null,
+            playerName: null,
+            isHost: false,
+            players: [],
+            currentRole: null,
+            secretWord: null,
+            timerInterval: null
+        };
+
+        // DOM elements
+        const screens = {
+            welcome: document.getElementById('welcomeScreen'),
+            rules: document.getElementById('rulesScreen'),
+            lobby: document.getElementById('lobbyScreen'),
+            game: document.getElementById('gameScreen')
+        };
+
+        const elements = {
+            playerName: document.getElementById('playerName'),
+            roomCode: document.getElementById('roomCode'),
+            roomCodeDisplay: document.getElementById('roomCodeDisplay'),
+            playerCount: document.getElementById('playerCount'),
+            playersList: document.getElementById('playersList'),
+            startGameBtn: document.getElementById('startGameBtn'),
+            waitingMessage: document.getElementById('waitingMessage'),
+            topicTitle: document.getElementById('topicTitle'),
+            topicGrid: document.getElementById('topicGrid'),
+            yellowDie: document.getElementById('yellowDie'),
+            blueDie: document.getElementById('blueDie'),
+            playerRole: document.getElementById('playerRole'),
+            secretWordDisplay: document.getElementById('secretWordDisplay'),
+            statusMessage: document.getElementById('statusMessage'),
+            timer: document.getElementById('timer'),
+            clueInput: document.getElementById('clueInput'),
+            clueText: document.getElementById('clueText'),
+            cluesList: document.getElementById('cluesList'),
+            discussionControls: document.getElementById('discussionControls'),
+            votingArea: document.getElementById('votingArea'),
+            votingOptions: document.getElementById('votingOptions'),
+            votesList: document.getElementById('votesList'),
+            chameleonGuess: document.getElementById('chameleonGuess'),
+            guessText: document.getElementById('guessText'),
+            gameResult: document.getElementById('gameResult'),
+            resultMessage: document.getElementById('resultMessage'),
+            errorMessage: document.getElementById('errorMessage'),
+            errorText: document.getElementById('errorText')
+        };
+
+        // Utility functions
+        function showScreen(screenName) {
+            Object.values(screens).forEach(screen => screen.classList.remove('active'));
+            screens[screenName].classList.add('active');
+        }
+
+        function showError(message) {
+            elements.errorText.textContent = message;
+            elements.errorMessage.classList.remove('hidden');
+            setTimeout(() => {
+                elements.errorMessage.classList.add('hidden');
+            }, 5000);
+        }
+
+        function updateTimer(seconds) {
+            if (gameState.timerInterval) {
+                clearInterval(gameState.timerInterval);
+            }
+            
+            let remaining = seconds;
+            elements.timer.textContent = formatTime(remaining);
+            
+            gameState.timerInterval = setInterval(() => {
+                remaining--;
+                elements.timer.textContent = formatTime(remaining);
+                
+                if (remaining <= 0) {
+                    clearInterval(gameState.timerInterval);
+                    elements.timer.textContent = "Time's up!";
+                }
+            }, 1000);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updatePlayersDisplay() {
+            elements.playerCount.textContent = gameState.players.length;
+            elements.playersList.innerHTML = '';
+            
+            gameState.players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = `player-item ${player.id === gameState.players.find(p => gameState.isHost && p.id === socket.id) ? 'host' : ''}`;
+                div.innerHTML = `
+                    <span>${player.name}</span>
+                    ${gameState.isHost && player.id === socket.id ? '<span>👑 Host</span>' : ''}
+                `;
+                elements.playersList.appendChild(div);
+            });
+            
+            if (gameState.isHost) {
+                elements.startGameBtn.classList.remove('hidden');
+                elements.waitingMessage.classList.add('hidden');
+                elements.startGameBtn.disabled = gameState.players.length < 3;
+            } else {
+                elements.startGameBtn.classList.add('hidden');
+                elements.waitingMessage.classList.remove('hidden');
+            }
+        }
+
+        // Event listeners
+        document.getElementById('createRoomBtn').addEventListener('click', () => {
+            const name = elements.playerName.value.trim();
+            if (!name) {
+                showError('Please enter your name');
+                return;
+            }
+            gameState.playerName = name;
+            socket.emit('createRoom', { playerName: name });
+        });
+
+        document.getElementById('joinRoomBtn').addEventListener('click', () => {
+            document.getElementById('joinRoomInput').classList.remove('hidden');
+            elements.roomCode.focus();
+        });
+
+        document.getElementById('confirmJoinBtn').addEventListener('click', () => {
+            const name = elements.playerName.value.trim();
+            const code = elements.roomCode.value.trim().toUpperCase();
+            
+            if (!name) {
+                showError('Please enter your name');
+                return;
+            }
+            
+            if (!code || code.length !== 4) {
+                showError('Please enter a valid 4-letter room code');
+                return;
+            }
+            
+            gameState.playerName = name;
+            socket.emit('joinRoom', { roomCode: code, playerName: name });
+        });
+
+        document.getElementById('showRules').addEventListener('click', () => {
+            showScreen('rules');
+        });
+
+        document.getElementById('backToLobby').addEventListener('click', () => {
+            showScreen('lobby');
+        });
+
+        document.getElementById('startGameBtn').addEventListener('click', () => {
+            socket.emit('startGame');
+        });
+
+        document.getElementById('submitClue').addEventListener('click', () => {
+            const clue = elements.clueText.value.trim();
+            if (!clue) {
+                showError('Please enter a clue');
+                return;
+            }
+            
+            // Check for single word
+            if (clue.includes(' ')) {
+                showError('Only one word allowed for clues!');
+                return;
+            }
+            
+            socket.emit('submitClue', { clue });
+            elements.clueText.value = '';
+            elements.clueInput.classList.add('hidden');
+        });
+
+        document.getElementById('endDiscussion').addEventListener('click', () => {
+            socket.emit('endDiscussion');
+        });
+
+        document.getElementById('submitGuess').addEventListener('click', () => {
+            const guess = elements.guessText.value.trim();
+            if (!guess) {
+                showError('Please enter your guess');
+                return;
+            }
+            
+            socket.emit('chameleonGuess', { guess });
+            elements.chameleonGuess.classList.add('hidden');
+        });
+
+        document.getElementById('playAgain').addEventListener('click', () => {
+            elements.gameResult.classList.add('hidden');
+            elements.cluesList.innerHTML = '';
+            elements.votesList.innerHTML = '';
+            showScreen('lobby');
+        });
+
+        // Enter key handlers
+        elements.playerName.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('createRoomBtn').click();
+        });
+
+        elements.roomCode.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('confirmJoinBtn').click();
+        });
+
+        elements.clueText.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('submitClue').click();
+        });
+
+        elements.guessText.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('submitGuess').click();
+        });
+
+        // Auto-uppercase room codes
+        elements.roomCode.addEventListener('input', (e) => {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
+        // Socket event handlers
+        socket.on('roomCreated', (data) => {
+            gameState.roomCode = data.roomCode;
+            gameState.isHost = true;
+            gameState.players = data.players;
+            
+            elements.roomCodeDisplay.textContent = data.roomCode;
+            updatePlayersDisplay();
+            showScreen('lobby');
+        });
+
+        socket.on('playerJoined', (data) => {
+            gameState.players = data.players;
+            updatePlayersDisplay();
+            showScreen('lobby');
+        });
+
+        socket.on('playerLeft', (data) => {
+            gameState.players = data.players;
+            if (data.newHost) {
+                gameState.isHost = data.newHost === socket.id;
+            }
+            updatePlayersDisplay();
+        });
+
+        socket.on('gameStarted', (data) => {
+            elements.topicTitle.textContent = data.topic.title;
+            elements.yellowDie.textContent = data.diceRoll.yellow;
+            elements.blueDie.textContent = data.diceRoll.blue;
+            
+            // Create topic grid
+            elements.topicGrid.innerHTML = '';
+            data.topic.words.forEach(row => {
+                row.forEach(word => {
+                    const div = document.createElement('div');
+                    div.className = 'topic-word';
+                    div.textContent = word;
+                    elements.topicGrid.appendChild(div);
+                });
+            });
+            
+            showScreen('game');
+        });
+
+        socket.on('roleAssigned', (data) => {
+            gameState.currentRole = data.role;
+            gameState.secretWord = data.secretWord;
+            
+            if (data.role === 'chameleon') {
+                elements.playerRole.innerHTML = '<div class="role-chameleon">🦎 You are the CHAMELEON</div>';
+                elements.secretWordDisplay.textContent = 'You must figure out the secret word!';
+            } else {
+                elements.playerRole.innerHTML = '<div class="role-player">🔍 You are a PLAYER</div>';
+                elements.secretWordDisplay.innerHTML = `<div class="secret-word">Secret word: ${data.secretWord}</div>`;
+                
+                // Highlight the secret word in the grid
+                const words = document.querySelectorAll('.topic-word');
+                words.forEach(word => {
+                    if (word.textContent === data.secretWord) {
+                        word.classList.add('highlight');
+                    }
+                });
+            }
+        });
+
+        socket.on('cluePhaseStarted', (data) => {
+            elements.statusMessage.textContent = data.currentPlayer === socket.id ? 'Your turn to give a clue!' : 'Waiting for clue...';
+            updateTimer(data.timeLimit);
+            
+            if (data.currentPlayer === socket.id) {
+                elements.clueInput.classList.remove('hidden');
+                elements.clueText.focus();
+            }
+            
+            elements.discussionControls.classList.add('hidden');
+            elements.votingArea.classList.add('hidden');
+        });
+
+        socket.on('nextPlayerTurn', (data) => {
+            elements.statusMessage.textContent = data.currentPlayer === socket.id ? 'Your turn to give a clue!' : 'Waiting for clue...';
+            updateTimer(data.timeLimit);
+            
+            if (data.currentPlayer === socket.id) {
+                elements.clueInput.classList.remove('hidden');
+                elements.clueText.focus();
+            }
+        });
+
+        socket.on('clueSubmitted', (data) => {
+            const clueDiv = document.createElement('div');
+            clueDiv.className = 'clue-item';
+            clueDiv.innerHTML = `
+                <span class="clue-player">${data.playerName}:</span>
+                <span class="clue-text">${data.clue}</span>
+            `;
+            elements.cluesList.appendChild(clueDiv);
+        });
+
+        socket.on('discussionStarted', (data) => {
+            elements.statusMessage.textContent = 'Discussion time! Who is the Chameleon?';
+            elements.discussionControls.classList.remove('hidden');
+            updateTimer(data.timeLimit);
+        });
+
+        socket.on('votingStarted', () => {
+            elements.statusMessage.textContent = 'Time to vote! Who is the Chameleon?';
+            elements.discussionControls.classList.add('hidden');
+            elements.votingArea.classList.remove('hidden');
+            
+            if (gameState.timerInterval) {
+                clearInterval(gameState.timerInterval);
+            }
+            elements.timer.textContent = '';
+            
+            // Create voting options
+            elements.votingOptions.innerHTML = '';
+            
+            gameState.players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = 'vote-option';
+                div.textContent = player.name;
+                div.addEventListener('click', () => {
+                    document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
+                    div.classList.add('selected');
+                    socket.emit('submitVote', { vote: player.id });
+                });
+                elements.votingOptions.appendChild(div);
+            });
+            
+            // Add "Nobody" option
+            const nobodyDiv = document.createElement('div');
+            nobodyDiv.className = 'vote-option';
+            nobodyDiv.textContent = 'Nobody (Additional clues needed)';
+            nobodyDiv.addEventListener('click', () => {
+                document.querySelectorAll('.vote-option').forEach(opt => opt.classList.remove('selected'));
+                nobodyDiv.classList.add('selected');
+                socket.emit('submitVote', { vote: 'nobody' });
+            });
+            elements.votingOptions.appendChild(nobodyDiv);
+        });
+
+        socket.on('voteSubmitted', (data) => {
+            const voteDiv = document.createElement('div');
+            voteDiv.className = 'clue-item';
+            voteDiv.innerHTML = `
+                <span class="clue-player">${data.playerName}</span>
+                <span class="clue-text">voted for: ${data.vote}</span>
+            `;
+            elements.votesList.appendChild(voteDiv);
+        });
+
+        socket.on('votingResult', (data) => {
+            elements.votingArea.classList.add('hidden');
+            
+            if (data.type === 'chameleonCaught') {
+                elements.statusMessage.textContent = 'Chameleon caught! Waiting for their guess...';
+                
+                if (gameState.currentRole === 'chameleon') {
+                    elements.chameleonGuess.classList.remove('hidden');
+                    elements.guessText.focus();
+                }
+            } else if (data.type === 'wrongAccusation') {
+                showGameResult(false, `Wrong! The accused was not the Chameleon. The Chameleon escaped!`);
+            } else if (data.type === 'chameleonEscaped') {
+                showGameResult(false, 'The Chameleon escaped! No one was caught.');
+            }
+        });
+
+        socket.on('chameleonGuessResult', (data) => {
+            const message = data.correct ? 
+                `${data.chameleonName} guessed "${data.guess}" correctly and won!` :
+                `${data.chameleonName} guessed "${data.guess}" but the word was "${data.secretWord}". Players win!`;
+            
+            const playerWon = gameState.currentRole === 'chameleon' ? data.correct : !data.correct;
+            showGameResult(playerWon, message);
+        });
+
+        socket.on('chameleonLeft', () => {
+            showError('The Chameleon has left the chat! Game ended.');
+            setTimeout(() => {
+                showScreen('lobby');
+            }, 3000);
+        });
+
+        socket.on('error', (data) => {
+            showError(data.message);
+        });
+
+        function showGameResult(won, message) {
+            elements.resultMessage.innerHTML = `
+                <div class="${won ? 'result-win' : 'result-lose'}">
+                    ${won ? '🎉 You Won!' : '😔 You Lost!'}
+                </div>
+                <p style="margin-top: 15px;">${message}</p>
+            `;
+            elements.gameResult.classList.remove('hidden');
+            
+            if (gameState.timerInterval) {
+                clearInterval(gameState.timerInterval);
+            }
+        }
+
+        // Initialize
+        showScreen('welcome');
+    </script>
 </body>
 </html>
