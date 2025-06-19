@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chameleon Game</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Welcome Screen -->
+        <div id="welcomeScreen" class="screen active">
+            <div class="welcome-content">
+                <h1>🦎 THE CHAMELEON</h1>
+                <p class="subtitle">Blend in. Don't get caught.</p>
+                
+                <div class="name-input">
+                    <input type="text" id="playerName" placeholder="Enter your name" maxlength="15">
+                </div>
+                
+                <div class="button-group">
+                    <button id="createRoomBtn" class="btn primary">Create Room</button>
+                    <button id="joinRoomBtn" class="btn secondary">Join Room</button>
+                </div>
+                
+                <div id="joinRoomInput" class="join-input hidden">
+                    <input type="text" id="roomCode" placeholder="Enter room code" maxlength="4">
+                    <button id="confirmJoinBtn" class="btn primary">Join</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rules Screen -->
+        <div id="rulesScreen" class="screen">
+            <div class="rules-content">
+                <h2>🎯 HOW TO PLAY</h2>
+                
+                <div class="rules-section">
+                    <h3>OBJECTIVE</h3>
+                    <p><strong>Players:</strong> Find the Chameleon without revealing the secret word</p>
+                    <p><strong>Chameleon:</strong> Blend in and guess the secret word</p>
+                </div>
+                
+                <div class="rules-section">
+                    <h3>SETUP</h3>
+                    <p>• 3-8 players can join</p>
+                    <p>• One player is secretly the Chameleon</p>
+                    <p>• Everyone sees a topic card with 16 words</p>
+                    <p>• Dice determine the secret word (except Chameleon doesn't know)</p>
+                </div>
+                
+                <div class="rules-section">
+                    <h3>GAMEPLAY</h3>
+                    <p>• Each player gives ONE word clue related to the secret word</p>
+                    <p>• 1 minute per player to think of a clue</p>
+                    <p>• Chameleon must bluff without knowing the word</p>
+                    <p>• 5 minutes discussion to identify the Chameleon</p>
+                    <p>• Vote for who you think is the Chameleon</p>
+                </div>
+                
+                <div class="rules-section">
+                    <h3>WINNING</h3>
+                    <p>• If Chameleon isn't caught: Chameleon wins</p>
+                    <p>• If caught but guesses secret word: Chameleon wins</p>
+                    <p>• If caught and wrong guess: Everyone else wins</p>
+                </div>
+                
+                <button id="backToLobby" class="btn secondary">Back to Lobby</button>
+            </div>
+        </div>
+
+        <!-- Lobby Screen -->
+        <div id="lobbyScreen" class="screen">
+            <div class="lobby-content">
+                <div class="room-header">
+                    <h2>Room: <span id="roomCodeDisplay"></span></h2>
+                    <button id="showRules" class="btn secondary small">Rules</button>
+                </div>
+                
+                <div class="players-list">
+                    <h3>Players (<span id="playerCount">0</span>/8)</h3>
+                    <div id="playersList"></div>
+                </div>
+                
+                <div class="lobby-actions">
+                    <button id="startGameBtn" class="btn primary hidden">Start Game</button>
+                    <p id="waitingMessage" class="waiting-text">Waiting for host to start the game...</p>
+                    <p class="min-players">Minimum 3 players required</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <!-- Topic Card -->
+            <div id="topicCard" class="topic-card">
+                <h3 id="topicTitle"></h3>
+                <div id="topicGrid" class="topic-grid"></div>
+                <div id="diceDisplay" class="dice-display">
+                    <span class="dice yellow">🎲 <span id="yellowDie"></span></span>
+                    <span class="dice blue">🎲 <span id="blueDie"></span></span>
+                </div>
+            </div>
+
+            <!-- Role Information -->
+            <div id="roleInfo" class="role-info">
+                <div id="playerRole" class="role-display"></div>
+                <div id="secretWordDisplay" class="secret-word"></div>
+            </div>
+
+            <!-- Game Status -->
+            <div id="gameStatus" class="game-status">
+                <div id="statusMessage" class="status-message"></div>
+                <div id="timer" class="timer"></div>
+            </div>
+
+            <!-- Clue Input -->
+            <div id="clueInput" class="clue-input hidden">
+                <h4>Your turn! Give a one-word clue:</h4>
+                <input type="text" id="clueText" placeholder="Enter your clue" maxlength="20">
+                <button id="submitClue" class="btn primary">Submit Clue</button>
+            </div>
+
+            <!-- Clues Display -->
+            <div id="cluesDisplay" class="clues-display">
+                <h4>Clues Given:</h4>
+                <div id="cluesList"></div>
+            </div>
+
+            <!-- Discussion Controls -->
+            <div id="discussionControls" class="discussion-controls hidden">
+                <button id="endDiscussion" class="btn primary">End Discussion & Vote</button>
+            </div>
+
+            <!-- Voting -->
+            <div id="votingArea" class="voting-area hidden">
+                <h4>Who is the Chameleon?</h4>
+                <div id="votingOptions" class="voting-options"></div>
+            </div>
+
+            <!-- Voting Results -->
+            <div id="votingResults" class="voting-results">
+                <div id="votesList"></div>
+            </div>
+
+            <!-- Chameleon Guess -->
+            <div id="chameleonGuess" class="chameleon-guess hidden">
+                <h4>Chameleon's Final Guess:</h4>
+                <p>What was the secret word?</p>
+                <input type="text" id="guessText" placeholder="Enter your guess" maxlength="20">
+                <button id="submitGuess" class="btn primary">Submit Guess</button>
+            </div>
+
+            <!-- Game Result -->
+            <div id="gameResult" class="game-result hidden">
+                <div id="resultMessage"></div>
+                <button id="playAgain" class="btn primary">Play Again</button>
+            </div>
+        </div>
+
+        <!-- Error Messages -->
+        <div id="errorMessage" class="error-message hidden">
+            <span id="errorText"></span>
+            <button id="closeError" class="close-btn">&times;</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
